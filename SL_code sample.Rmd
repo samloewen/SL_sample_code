@@ -1,0 +1,136 @@
+---
+title: "Code sample"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(tidyr)
+library(readxl)
+library(gridExtra)
+```
+
+The following project is an exploratory analysis examining trends in the prevalence of EEOP, Enlarged External Occipital Protuberance or bony projections, in young people.
+
+```{r, include=FALSE}
+posture = 
+  read_excel("./data/p8105_mtp_data.xlsx", skip = 8) %>% 
+  janitor::clean_names() %>% 
+mutate(
+    eop_size_mm = replace_na(eop_size_mm,0),
+    sex = factor(sex, c(0,1), c("female","male")),
+    age_group = factor(age_group, c(2,3,4,5,6,7,8), c("18-30","31-40","41-50","51-60","60+","60+","60+"), ordered = TRUE),  
+    eop_size = factor(eop_size, c("0", "1", "2", "3", "4", "5"), c("0-5", "5-10", "10-15", "15-20", "20-25", "25+"), ordered = TRUE),
+    eop_visibility_classification = factor(eop_visibility_classification, c("0","1","2"), c("eop size 0 mm", "0 < eop size mm <=5","eop size >= 5 mm"), ordered = TRUE), 
+    eop_shape = factor(eop_shape, c("1","2","3","4","5"), c("1","2","3","4","5"), ordered = TRUE),
+    fhp_category = factor(fhp_category)) %>% 
+filter(age_group != "1")
+posture
+```
+
+### Data Summary
+
+There are `r nrow(posture)` participants and `r ncol(posture)` variables in the dataset. Significant variables include: `eom_size_mm`, which indicates the size of the protrusion, and `fhp_size_mm`, which indicates the extent of the participants' forward head protraction, a measure that is potentially linked to EOP. The largest proportions of participants are between 18-30 and over 60. Sex is fairly evenly distributed. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+age_sex=
+posture %>% 
+  group_by(age_group, sex) %>% 
+  summarize (n_obs = n()) %>% 
+  pivot_wider(
+    names_from = sex,
+    values_from = n_obs
+  )
+
+knitr::kable(age_sex)
+
+posture %>% 
+ ggplot(aes(x = age, fill = sex, color=sex)) + geom_histogram(color="black")
+```
+
+EEOP is defined as an EOP larger than 10mm. We can assess the prevalence of enlarged EOPs in the data by filtering `eop_size_mm` for EOPs larger than 10mm, finding an EEOP rate of 32.16% in the sample.
+
+```{r, echo=FALSE}
+eeop_rate =
+  posture %>% 
+  mutate(eeop = as.numeric(ifelse(eop_size_mm > 10, "1", "0"))) %>% 
+  summarize (eeop_rate = mean(eeop))
+
+knitr::kable(eeop_rate)
+```
+
+In data cleaning, irregularities were found in categorical variables `eop_size_mm` and `fhp_category` where data does not adhere to the defined categories. There are missing data in `eop_size_mm`, `eop_shape`, and `fhp_size_mm`.
+
+### Trends in age and sex
+
+Our analysis found that men consistently had higher FHP measurements than women, and that size of FHP increases with age. For reference, the mean female FHP size was `r round(mean(pull(filter(posture,sex=="female"),fhp_size_mm), na.rm=TRUE), digits=2)`mm with a standard deviation of `r round(sd(pull(filter(posture,sex=="female"),fhp_size_mm), na.rm=TRUE),digits=2)`mm. While the mean male FHP size was `r round(mean(pull(filter(posture,sex=="male"),fhp_size_mm), na.rm=TRUE), digits=2)`mm, with a standard deviation of `r round(sd(pull(filter(posture,sex=="male"),fhp_size_mm),na.rm=TRUE), digits=2)`mm.
+
+
+```{r, echo=FALSE, warning=FALSE}
+fig_3=
+posture %>% 
+  ggplot(aes(x = age_group, y = fhp_size_mm, na.rm=TRUE)) + geom_boxplot(aes(fill=sex)) +   
+  labs(title = "Distribution of FHP size by sex, age group", 
+    x = "Age Group", 
+    y = "FHP size in mm")
+
+fig_3
+```
+
+People 18-30 appear to have higher rates of EEOP and men showed higher rates of EEOP than women across age groups. 
+
+
+```{r, echo = FALSE, warning=FALSE}
+fig_4=
+posture %>% 
+  mutate(eeop = as.numeric(ifelse(eop_size_mm > 10, "1", "0"))) %>% 
+  group_by(age_group, sex) %>% 
+  summarize(rate = mean(eeop)) %>% 
+ggplot(aes(x=age_group, y=rate, group = sex, color = sex)) + geom_point(size=2) + geom_line(size=1) +
+  labs(title = "Rate of enlarged EOP by sex, age group", 
+    x = "Age Group", 
+    y = "Rate of EEOP")
+
+fig_4
+```
+
+```{r, include=FALSE, warning=FALSE}
+grid.arrange(fig_3, fig_4, nrow = 1)
+```
+
+Our analysis examining at the relationship between EOP and FHP also confirms that EOP size is higher among those 18-30, and that FHP is highest for those over 60.
+
+```{r, echo=FALSE, warning=FALSE}
+
+posture %>% 
+ggplot(aes(x = eop_size_mm, y = fhp_size_mm, na.rm=TRUE)) + 
+  geom_point() + 
+  labs(title = "EOP size and FHP size interaction", 
+    x = "EOP size mm", 
+    y = "FHP size mm")
+
+posture %>% 
+ggplot(aes(x = eop_size_mm, y = fhp_size_mm, color = age_group, na.rm=TRUE)) + 
+  geom_point() + facet_grid(sex ~ age_group) +
+  labs(title = "EOP size and FHP size interaction, by age, sex", 
+    x = "EOP size mm", 
+    y = "FHP size mm")
+```
+
+Based on the frequency, FHP greater than 40mm appears to be more prevalent in those over 60.
+
+```{r, echo=FALSE}
+posture %>% 
+  filter(fhp_size_mm > 40) %>% 
+  group_by(age_group) %>% 
+  summarize(n_obs=n()) %>% 
+  ggplot(aes(x = age_group, y = n_obs)) + geom_bar(stat = "identity", color="black", fill="salmon", position=position_dodge()) + 
+  geom_text(aes(label = n_obs), vjust=1.6) +
+    labs(title = "Count of FHP >40 by age group", 
+    x = "Age Group", 
+    y = "Count FHP >40")
+```
+
+In summary our analysis finds that there is a higher rate of EEOP in the 18-30 group and a higher rate of FHP in those over 60.
+
+
